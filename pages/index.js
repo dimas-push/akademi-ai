@@ -11,7 +11,6 @@ async function fetchWithRetry(url, retries = 2) {
   }
 }
 
-// ⏰ Countdown helper
 function getCountdown(timestamp) {
   if (!timestamp) return "-";
 
@@ -31,27 +30,38 @@ export default function Home() {
   const [deadlines, setDeadlines] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [, setTick] = useState(0); // buat refresh countdown
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
 
-      const c = await fetchWithRetry("/api/moodle/courses");
-      setCourses(c);
+      try {
+        const c = await fetchWithRetry("/api/moodle/courses");
+        setCourses(Array.isArray(c) ? c : []);
+      } catch {
+        setCourses([]);
+      }
 
-      const d = await fetchWithRetry("/api/moodle/deadlines");
-      setDeadlines(d);
+      try {
+        const d = await fetchWithRetry("/api/moodle/deadlines");
+        setDeadlines(Array.isArray(d) ? d : []);
+      } catch {
+        setDeadlines([]);
+      }
 
-      const n = await fetchWithRetry("/api/moodle/notifications");
-      setNotifications(n);
+      try {
+        const n = await fetchWithRetry("/api/moodle/notifications");
+        setNotifications(Array.isArray(n) ? n : []);
+      } catch {
+        setNotifications([]);
+      }
 
       setLoading(false);
     }
 
     loadData();
 
-    // refresh countdown tiap 1 menit
     const interval = setInterval(() => {
       setTick((t) => t + 1);
     }, 60000);
@@ -67,93 +77,56 @@ export default function Home() {
 
       {!loading && (
         <>
-          {/* 📚 COURSES */}
+          {/* COURSES */}
           <h2>📚 Courses</h2>
           {courses.length === 0 ? (
             <p>Tidak ada data</p>
           ) : (
             courses.map((c, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: 15,
-                  padding: 10,
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                }}
-              >
-                <strong>{c.fullname || c.name}</strong>
+              <div key={i} style={card}>
+                <strong>{c?.fullname || c?.name || "No name"}</strong>
 
-                {/* 📊 Progress Bar */}
-                <div
-                  style={{
-                    height: 10,
-                    background: "#eee",
-                    borderRadius: 5,
-                    marginTop: 5,
-                  }}
-                >
+                <div style={progressBg}>
                   <div
                     style={{
-                      width: `${c.progress || 0}%`,
-                      height: "100%",
-                      background: "#4caf50",
-                      borderRadius: 5,
+                      ...progressBar,
+                      width: `${c?.progress ?? 0}%`,
                     }}
                   />
                 </div>
 
-                <small>{c.progress || 0}% selesai</small>
+                <small>{c?.progress ?? 0}% selesai</small>
               </div>
             ))
           )}
 
-          {/* ⏰ DEADLINES */}
+          {/* DEADLINES */}
           <h2>⏰ Deadlines</h2>
           {deadlines.length === 0 ? (
             <p>Tidak ada deadline</p>
           ) : (
             deadlines.map((d, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: 15,
-                  padding: 10,
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                }}
-              >
-                <strong>{d.name}</strong>
+              <div key={i} style={card}>
+                <strong>{d?.name || "No title"}</strong>
                 <br />
-
                 📅{" "}
-                {d.duedate
+                {d?.duedate
                   ? new Date(d.duedate * 1000).toLocaleString("id-ID")
                   : "-"}
-
                 <br />
-
-                ⏳ <b>{getCountdown(d.duedate)}</b>
+                ⏳ <b>{getCountdown(d?.duedate)}</b>
               </div>
             ))
           )}
 
-          {/* 🔔 NOTIFICATIONS */}
+          {/* NOTIFICATIONS */}
           <h2>🔔 Notifications</h2>
           {notifications.length === 0 ? (
             <p>Tidak ada notifikasi</p>
           ) : (
             notifications.slice(0, 5).map((n, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: 10,
-                  padding: 10,
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                }}
-              >
-                {n.subject || n.smallmessage || "No title"}
+              <div key={i} style={card}>
+                {n?.subject || n?.smallmessage || "No title"}
               </div>
             ))
           )}
@@ -162,3 +135,24 @@ export default function Home() {
     </div>
   );
 }
+
+// 🎨 styles
+const card = {
+  marginBottom: 15,
+  padding: 10,
+  border: "1px solid #ddd",
+  borderRadius: 8,
+};
+
+const progressBg = {
+  height: 10,
+  background: "#eee",
+  borderRadius: 5,
+  marginTop: 5,
+};
+
+const progressBar = {
+  height: "100%",
+  background: "#4caf50",
+  borderRadius: 5,
+};
