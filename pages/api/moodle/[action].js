@@ -105,9 +105,30 @@ const ACTION_MAP = {
   },
 };
 
+// ─── Simple in-memory rate limiter ───────────────────────────
+const rateLimitMap = new Map();
+const RATE_LIMIT = 60;   // max requests per window
+const RATE_WINDOW = 60 * 1000; // 1 menit
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip) || { count: 0, reset: now + RATE_WINDOW };
+  if (now > entry.reset) {
+    entry.count = 0;
+    entry.reset = now + RATE_WINDOW;
+  }
+  entry.count++;
+  rateLimitMap.set(ip, entry);
+  return { ok: entry.count <= RATE_LIMIT, remaining: Math.max(0, RATE_LIMIT - entry.count) };
+}
+
 // ─── Pages Router Handler ────────────────────────────────────
 
 export default async function handler(req, res) {
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "unknown";
+  const { ok, remaining } = checkRateLimit(ip);
+  res.setHeader("X-RateLimit-Remaining", remaining);
+  if (!ok) return res.status(429).json({ error: "Terlalu banyak request, coba lagi dalam 1 menit" });
   // Only allow GET and POST
   if (!["GET", "POST"].includes(req.method)) {
     return res.status(405).json({ error: "Method not allowed" });

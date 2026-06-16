@@ -1,133 +1,205 @@
 import Head from "next/head";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { API, STUDENT_NAME, STUDENT_NIM, strip, safeFetch, fmtFull, daysUntil } from "../lib/helpers";
-import HomeTab         from "../components/tabs/HomeTab";
-import DeadlinesTab    from "../components/tabs/DeadlinesTab";
-import TasksTab        from "../components/tabs/TasksTab";
-import QuizzesTab      from "../components/tabs/QuizzesTab";
-import GradesTab       from "../components/tabs/GradesTab";
-import AttendanceTab   from "../components/tabs/AttendanceTab";
+import { API, STUDENT_NAME, STUDENT_NIM, strip, safeFetch, fmtFull, daysUntil, cx, timeToISO, isAttendanceEvent } from "../lib/helpers";
+import { detectNewItems, seedSWIds } from "../lib/notify";
+import { saveState, loadState } from "../lib/cache";
+import HomeTab          from "../components/tabs/HomeTab";
+import DeadlinesTab     from "../components/tabs/DeadlinesTab";
+import TasksTab         from "../components/tabs/TasksTab";
+import QuizzesTab       from "../components/tabs/QuizzesTab";
+import GradesTab        from "../components/tabs/GradesTab";
+import AttendanceTab    from "../components/tabs/AttendanceTab";
 import AnnouncementsTab from "../components/tabs/AnnouncementsTab";
-import NotifTab        from "../components/tabs/NotifTab";
-import ChatTab         from "../components/tabs/ChatTab";
+import NotifTab         from "../components/tabs/NotifTab";
+import ChatTab          from "../components/tabs/ChatTab";
 
-const cx = (...c) => c.filter(Boolean).join(" ");
+// ─── Deadline mapper (dipakai di dua tempat) ──────────────────
+const mapDeadline = (e) => ({
+  id: e.id, name: e.name, desc: strip(e.description),
+  type: e.modulename || e.eventtype,
+  course: e.course?.shortname || e.course?.fullname || "",
+  courseId: e.course?.id,
+  date: timeToISO(e.timestart),
+  url: e.url, action: e.action?.name, overdue: e.overdue,
+});
 
 export default function AkademiAI() {
-  const [tab, setTab]                 = useState("home");
-  const [courses, setCourses]         = useState([]);
-  const [deadlines, setDeadlines]     = useState([]);
-  const [assignments, setAssignments] = useState([]);
-  const [quizzes, setQuizzes]         = useState([]);
+  const [tab, setTab]                     = useState("home");
+  const [courses, setCourses]             = useState([]);
+  const [deadlines, setDeadlines]         = useState([]);
+  const [assignments, setAssignments]     = useState([]);
+  const [quizzes, setQuizzes]             = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-  const [grades, setGrades]           = useState({});
-  const [syncing, setSyncing]         = useState(true);
-  const [lastSync, setLastSync]       = useState(null);
-  const [syncProgress, setSyncProgress] = useState("");
-  const [errors, setErrors]           = useState([]);
-  const [nav, setNav]                 = useState(false);
-  const [chatMsgs, setChatMsgs]       = useState([]);
-  const [chatIn, setChatIn]           = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [attendance, setAttendance]   = useState([]);
-  const [mounted, setMounted]         = useState(false);
-  const chatEnd = useRef(null);
+  const [grades, setGrades]               = useState({});
+  const [syncing, setSyncing]             = useState(true);
+  const [lastSync, setLastSync]           = useState(null);
+  const [syncProgress, setSyncProgress]   = useState("");
+  const [errors, setErrors]               = useState([]);
+  const [nav, setNav]                     = useState(false);
+  const [attendance, setAttendance]       = useState([]);
+  const [mounted, setMounted]             = useState(false);
+  const [toasts, setToasts]               = useState([]);
+  const [autoAttendLog, setAutoAttendLog]     = useState([]);
+  const [lastAttendCheck, setLastAttendCheck] = useState(null);
+  const [chatMsgs, setChatMsgs]           = useState([]);
 
-  // Restore persisted data
+  const syncingRef = useRef(false); // guard: jangan dobel-sync
+
+  const addToast = useCallback((newToasts) => {
+    if (!newToasts.length) return;
+    setToasts(prev => [...prev, ...newToasts]);
+    newToasts.forEach(t => setTimeout(() => setToasts(prev => prev.filter(x => x.id !== t.id)), 6000));
+  }, []);
+
+  // ─── MOUNT: load cache → tampil instan, lalu sync background ──
   useEffect(() => {
     setMounted(true);
     try { const s = localStorage.getItem("akademi-att");  if (s) setAttendance(JSON.parse(s)); } catch {}
     try { const c = localStorage.getItem("akademi-chat"); if (c) setChatMsgs(JSON.parse(c));   } catch {}
+
+    loadState().then(cached => {
+      if (!cached) return;
+      if (cached.courses?.length)                          setCourses(cached.courses);
+      if (cached.deadlines?.length)                        setDeadlines(cached.deadlines);
+      if (cached.assignments?.length)                      setAssignments(cached.assignments);
+      if (cached.quizzes?.length)                          setQuizzes(cached.quizzes);
+      if (cached.grades && Object.keys(cached.grades).length) setGrades(cached.grades);
+      if (cached.notifications?.length)                    setNotifications(cached.notifications);
+      if (cached.announcements?.length)                    setAnnouncements(cached.announcements);
+      if (cached.lastSync) {
+        setLastSync(new Date(cached.lastSync));
+        setSyncing(false); // ada cache → sembunyikan loading screen
+      }
+    });
   }, []);
-  useEffect(() => { if (mounted) try { localStorage.setItem("akademi-att",  JSON.stringify(attendance));         } catch {} }, [attendance, mounted]);
+
+  // ─── PERSIST ──────────────────────────────────────────────────
+  useEffect(() => { if (mounted) try { localStorage.setItem("akademi-att",  JSON.stringify(attendance)); } catch {} }, [attendance, mounted]);
   useEffect(() => { if (mounted) try { localStorage.setItem("akademi-chat", JSON.stringify(chatMsgs.slice(-50))); } catch {} }, [chatMsgs, mounted]);
 
-  // ─── SEQUENTIAL SYNC ─────────────────────────────────────────
-  const syncAll = useCallback(async () => {
-    setSyncing(true); setErrors([]);
+  // ─── AUTO-ABSEN POLLING ───────────────────────────────────────
+  useEffect(() => {
+    if (!mounted) return;
+
+    const isClassHour = () => { const h = new Date().getHours(), d = new Date().getDay(); return d >= 1 && d <= 6 && h >= 6 && h < 22; };
+
+    const runAttend = async () => {
+      if (!isClassHour()) return;
+      setLastAttendCheck(new Date());
+      try {
+        const res  = await fetch("/api/moodle/auto-attend", { method: "POST" });
+        const data = await res.json();
+        if (data.attended?.length > 0) {
+          data.attended.forEach(a => {
+            addToast([{ id: `auto-${a.name}-${Date.now()}`, title: "✅ Auto-Absen Berhasil!", body: `${a.name} — ${a.course}`, type: "attendance" }]);
+            setAutoAttendLog(p => [{ ...a, time: new Date().toISOString() }, ...p.slice(0, 19)]);
+          });
+        }
+      } catch (e) {
+        console.warn("[AkademiAI] Auto-attend error:", e.message);
+      }
+    };
+
+    runAttend();
+    const interval = setInterval(runAttend, 15 * 60 * 1000);
+
+    const onSWMsg = (event) => {
+      if (event.data?.type === "AUTO_ATTENDED") {
+        event.data.attended?.forEach(a => {
+          addToast([{ id: `sw-auto-${a.name}-${Date.now()}`, title: "✅ Auto-Absen Berhasil!", body: `${a.name} — ${a.course}`, type: "attendance" }]);
+          setAutoAttendLog(p => [{ ...a, time: new Date().toISOString() }, ...p.slice(0, 19)]);
+        });
+      }
+    };
+    if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", onSWMsg);
+    return () => {
+      clearInterval(interval);
+      if ("serviceWorker" in navigator) navigator.serviceWorker.removeEventListener("message", onSWMsg);
+    };
+  }, [mounted, addToast]);
+
+  // ─── SYNC ────────────────────────────────────────────────────
+  const syncAll = useCallback(async (silent = false) => {
+    if (syncingRef.current) return; // hindari dobel-sync
+    syncingRef.current = true;
+    if (!silent) setSyncing(true);
+    setErrors([]);
     const errs = [];
 
-    setSyncProgress("Mengambil mata kuliah...");
-    const crsData = await safeFetch(`${API}/courses?classification=inprogress`);
-    if (crsData?.courses) setCourses(crsData.courses); else errs.push("courses");
-    await new Promise(r => setTimeout(r, 500));
+    if (!silent) setSyncProgress("Sinkronisasi data...");
 
-    setSyncProgress("Mengambil deadline...");
-    const dlData = await safeFetch(`${API}/deadlines?limitnum=30`);
-    if (dlData?.events) {
-      setDeadlines(dlData.events.map(e => ({
-        id: e.id, name: e.name, desc: strip(e.description),
-        type: e.modulename || e.eventtype,
-        course: e.course?.shortname || e.course?.fullname || "",
-        courseId: e.course?.id,
-        date: e.timestart ? new Date(e.timestart * 1000).toISOString() : null,
-        url: e.url, action: e.action?.name, overdue: e.overdue,
-      })));
-    } else errs.push("deadlines");
-    await new Promise(r => setTimeout(r, 500));
+    const [crsData, dlData, notifData, asgData, qzData, forumsData] = await Promise.all([
+      safeFetch(`${API}/courses?classification=inprogress`),
+      safeFetch(`${API}/deadlines?limitnum=30`),
+      safeFetch(`${API}/notifications?limit=20`),
+      safeFetch(`${API}/assignments`),
+      safeFetch(`${API}/quizzes`),
+      safeFetch(`${API}/forums`),
+    ]);
 
-    setSyncProgress("Mengambil notifikasi...");
-    const notifData = await safeFetch(`${API}/notifications?limit=20`);
+    let localCourses = [];
+    if (crsData?.courses) { localCourses = crsData.courses; setCourses(localCourses); }
+    else errs.push("courses");
+
+    let localDeadlines = [];
+    if (dlData?.events) { localDeadlines = dlData.events.map(mapDeadline); setDeadlines(localDeadlines); }
+    else errs.push("deadlines");
+
+    let localNotifs = [];
     if (notifData?.notifications) {
-      setNotifications(notifData.notifications.map(n => ({
+      localNotifs = notifData.notifications.map(n => ({
         id: n.id, subject: n.subject,
         text: n.smallmessage || strip(n.fullmessage),
         type: n.component, read: n.read,
-        time: new Date(n.timecreated * 1000).toISOString(), url: n.contexturl,
-      })));
+        time: timeToISO(n.timecreated), url: n.contexturl,
+      }));
+      setNotifications(localNotifs);
     } else errs.push("notifications");
-    await new Promise(r => setTimeout(r, 500));
 
-    setSyncProgress("Mengambil tugas...");
-    const asgData = await safeFetch(`${API}/assignments`);
+    let localAssignments = [];
     if (asgData?.courses) {
       const all = [];
       for (const c of asgData.courses)
         for (const a of c.assignments || [])
-          all.push({ id: a.id, name: a.name, intro: strip(a.intro), course: c.shortname || c.fullname, courseId: c.id, duedate: a.duedate ? new Date(a.duedate * 1000).toISOString() : null });
-      setAssignments(all.sort((a, b) => new Date(a.duedate || "2099") - new Date(b.duedate || "2099")));
+          all.push({ id: a.id, name: a.name, intro: strip(a.intro), course: c.shortname || c.fullname, courseId: c.id, duedate: timeToISO(a.duedate) });
+      localAssignments = all.sort((a, b) => new Date(a.duedate || "2099") - new Date(b.duedate || "2099"));
+      setAssignments(localAssignments);
     } else errs.push("assignments");
-    await new Promise(r => setTimeout(r, 500));
 
-    setSyncProgress("Mengambil quiz...");
-    const qzData = await safeFetch(`${API}/quizzes`);
+    let localQuizzes = [];
     if (qzData?.quizzes) {
-      setQuizzes(qzData.quizzes.map(q => ({
+      localQuizzes = qzData.quizzes.map(q => ({
         id: q.id, name: q.name, course: q.course,
-        timeopen: q.timeopen ? new Date(q.timeopen * 1000).toISOString() : null,
-        timeclose: q.timeclose ? new Date(q.timeclose * 1000).toISOString() : null,
+        timeopen: timeToISO(q.timeopen), timeclose: timeToISO(q.timeclose),
         timelimit: q.timelimit, maxgrade: q.grade,
-      })));
+      }));
+      setQuizzes(localQuizzes);
     } else errs.push("quizzes");
-    await new Promise(r => setTimeout(r, 500));
 
-    setSyncProgress("Mengambil pengumuman...");
-    try {
-      const forums = await safeFetch(`${API}/forums`);
-      if (forums) {
-        const newsForums = (Array.isArray(forums) ? forums : []).filter(f => f.type === "news");
-        const anns = [];
-        for (const f of newsForums.slice(0, 5)) {
-          await new Promise(r => setTimeout(r, 400));
-          const disc = await safeFetch(`${API}/forum-discussions?forumid=${f.id}&perpage=3`);
-          if (disc?.discussions) {
-            for (const d of disc.discussions)
-              anns.push({ id: d.discussion || d.id, name: d.name, msg: strip(d.message), author: d.userfullname, created: new Date(d.created * 1000).toISOString(), courseId: f.course, forum: f.name });
-          }
-        }
-        setAnnouncements(anns.sort((a, b) => new Date(b.created) - new Date(a.created)));
-      }
-    } catch { errs.push("announcements"); }
+    // Round 2: nilai + pengumuman — paralel
+    if (!silent) setSyncProgress("Mengambil nilai & pengumuman...");
 
-    if (crsData?.courses && errs.length < 3) {
-      setSyncProgress("Mengambil nilai...");
-      const gradeMap = {};
-      for (const c of (crsData.courses || []).slice(0, 8)) {
-        await new Promise(r => setTimeout(r, 400));
-        const g = await safeFetch(`${API}/grades?courseid=${c.id}`);
+    const gradePromises = localCourses.slice(0, 8).map(c =>
+      safeFetch(`${API}/grades?courseid=${c.id}`).then(g => ({ c, g }))
+    );
+    const newsForums  = forumsData
+      ? (Array.isArray(forumsData) ? forumsData : []).filter(f => f.type === "news").slice(0, 5)
+      : [];
+    const annPromises = newsForums.map(f =>
+      safeFetch(`${API}/forum-discussions?forumid=${f.id}&perpage=3`).then(disc => ({ f, disc }))
+    );
+
+    const [gradeResults, annResults] = await Promise.all([
+      Promise.all(gradePromises),
+      Promise.all(annPromises),
+    ]);
+
+    let localGrades = {};
+    if (localCourses.length > 0) {
+      for (const { c, g } of gradeResults) {
         if (g?.usergrades?.[0]) {
-          gradeMap[c.id] = {
+          localGrades[c.id] = {
             name: c.shortname || c.fullname,
             items: (g.usergrades[0].gradeitems || []).map(gi => ({
               id: gi.id, name: gi.itemname || "Total", type: gi.itemtype, module: gi.itemmodule,
@@ -136,46 +208,56 @@ export default function AkademiAI() {
           };
         }
       }
-      setGrades(gradeMap);
+      setGrades(localGrades);
     }
 
-    setSyncProgress(""); setErrors(errs); setLastSync(new Date()); setSyncing(false);
-  }, []);
+    let localAnns = [];
+    if (forumsData) {
+      for (const { f, disc } of annResults) {
+        if (disc?.discussions) {
+          for (const d of disc.discussions)
+            localAnns.push({ id: d.discussion || d.id, name: d.name, msg: strip(d.message), author: d.userfullname, created: timeToISO(d.created), courseId: f.course, forum: f.name });
+        }
+      }
+      localAnns.sort((a, b) => new Date(b.created) - new Date(a.created));
+      setAnnouncements(localAnns);
+    } else errs.push("announcements");
 
+    // Deteksi item baru + seed SW
+    if (!silent) addToast(detectNewItems(localAssignments, localDeadlines));
+    seedSWIds(localAssignments.map(a => a.id), localDeadlines.filter(isAttendanceEvent).map(e => e.id));
+
+    // Simpan ke IndexedDB cache
+    const now = new Date();
+    await saveState({
+      courses: localCourses, deadlines: localDeadlines, assignments: localAssignments,
+      quizzes: localQuizzes, grades: localGrades, notifications: localNotifs,
+      announcements: localAnns, lastSync: now.toISOString(),
+    });
+
+    setSyncProgress(""); setErrors(errs); setLastSync(now); setSyncing(false);
+    syncingRef.current = false;
+  }, [addToast]);
+
+  // Sync pertama kali setelah mount
   useEffect(() => { syncAll(); }, [syncAll]);
 
-  // Auto-refresh deadlines every 15 minutes
+  // Auto-sync saat tab kembali aktif (user balik ke tab/buka app lagi)
   useEffect(() => {
-    const i = setInterval(async () => {
-      const dl = await safeFetch(`${API}/deadlines?limitnum=30`);
-      if (dl?.events) setDeadlines(dl.events.map(e => ({
-        id: e.id, name: e.name, desc: strip(e.description), type: e.modulename || e.eventtype,
-        course: e.course?.shortname || "", courseId: e.course?.id,
-        date: e.timestart ? new Date(e.timestart * 1000).toISOString() : null,
-        url: e.url, action: e.action?.name, overdue: e.overdue,
-      })));
-    }, 15 * 60 * 1000);
-    return () => clearInterval(i);
-  }, []);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const stale = !lastSync || Date.now() - lastSync.getTime() > 3 * 60 * 1000;
+      if (stale) syncAll(true); // silent: jangan reset loading screen
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [lastSync, syncAll]);
 
-  // ─── AI CHAT ─────────────────────────────────────────────────
-  const sendChat = async (msg) => {
-    if (!msg.trim()) return;
-    setChatMsgs(p => [...p, { role: "user", content: msg, time: new Date().toISOString() }]);
-    setChatIn(""); setChatLoading(true);
-    try {
-      const ctx = `PROFIL: ${STUDENT_NAME}, UBP Karawang\nMATKUL (${courses.length}): ${courses.map(c => c.shortname || c.fullname).join(", ")}\nDEADLINE:\n${deadlines.slice(0, 10).map(d => "- " + d.name + " (" + d.course + ") " + fmtFull(d.date) + " | " + (d.overdue ? "TERLAMBAT" : daysUntil(d.date) + "h lagi")).join("\n")}\nTUGAS: ${assignments.length} total\nQUIZ: ${quizzes.length}\nNOTIF BELUM DIBACA: ${notifications.filter(n => !n.read).length}`;
-      const res = await fetch("/api/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context: ctx, messages: [...chatMsgs.slice(-8).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })), { role: "user", content: msg }] }),
-      });
-      const data = await res.json();
-      setChatMsgs(p => [...p, { role: "assistant", content: data.reply || data.error || "Gagal merespon.", time: new Date().toISOString() }]);
-    } catch {
-      setChatMsgs(p => [...p, { role: "assistant", content: "⚠️ Gagal terhubung ke AI. Pastikan ANTHROPIC_API_KEY sudah diset.", time: new Date().toISOString() }]);
-    }
-    setChatLoading(false);
-  };
+  // Auto-sync setiap 10 menit selama app terbuka
+  useEffect(() => {
+    const i = setInterval(() => syncAll(true), 10 * 60 * 1000);
+    return () => clearInterval(i);
+  }, [syncAll]);
 
   // ─── COMPUTED ────────────────────────────────────────────────
   const urgentDl  = deadlines.filter(d => daysUntil(d.date) >= 0 && daysUntil(d.date) <= 3);
@@ -184,22 +266,33 @@ export default function AkademiAI() {
   const attRate   = attendance.length > 0 ? (attendance.filter(a => a.present).length / attendance.length * 100).toFixed(0) : 0;
 
   const tabs = [
-    { id: "home",          label: "Dashboard",   icon: "🏠" },
-    { id: "deadlines",     label: "Deadline",    icon: "⏰", badge: urgentDl.length || null },
-    { id: "tasks",         label: "Tugas",       icon: "📝" },
-    { id: "quizzes",       label: "Quiz",        icon: "📋" },
-    { id: "grades",        label: "Nilai",       icon: "📊" },
-    { id: "attendance",    label: "Absensi",     icon: "✅" },
-    { id: "announcements", label: "Pengumuman",  icon: "📢" },
-    { id: "notif",         label: "Notifikasi",  icon: "🔔", badge: unread || null },
-    { id: "chat",          label: "AI Chat",     icon: "🤖" },
+    { id: "home",          label: "Dashboard",  icon: "🏠" },
+    { id: "deadlines",     label: "Deadline",   icon: "⏰", badge: urgentDl.length || null },
+    { id: "tasks",         label: "Tugas",      icon: "📝" },
+    { id: "quizzes",       label: "Quiz",       icon: "📋" },
+    { id: "grades",        label: "Nilai",      icon: "📊" },
+    { id: "attendance",    label: "Absensi",    icon: "✅" },
+    { id: "announcements", label: "Pengumuman", icon: "📢" },
+    { id: "notif",         label: "Notifikasi", icon: "🔔", badge: unread || null },
+    { id: "chat",          label: "AI Chat",    icon: "🤖" },
   ];
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  };
+
+  const syncAge = lastSync ? Math.floor((Date.now() - lastSync.getTime()) / 60000) : null;
 
   return (
     <>
       <Head>
         <title>AkademiAI — UBP Karawang</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#07101f" />
+        <meta name="description" content="Dashboard akademik mahasiswa UBP Karawang dengan AI" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
         <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>" />
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=optional" rel="stylesheet" />
       </Head>
@@ -207,38 +300,85 @@ export default function AkademiAI() {
       <div className="app">
         {/* Mobile header */}
         <div className="mob-hdr">
-          <div className="mob-left"><span>🎓</span><span className="logo-txt">AkademiAI</span></div>
+          <div className="mob-left">
+            <div className="sb-logo-icon">🎓</div>
+            <span className="logo-txt">AkademiAI</span>
+          </div>
           <button className="mob-menu" onClick={() => setNav(!nav)}>☰</button>
         </div>
 
         {/* Sidebar */}
         <nav className={cx("sidebar", nav && "open")}>
-          <div className="sb-head"><span>🎓</span><span className="logo-txt">AkademiAI</span></div>
-          <div className="sb-user">
-            <div className="sb-name">{STUDENT_NAME}</div>
-            {STUDENT_NIM && <div className="sb-nim">NIM: {STUDENT_NIM}</div>}
+          <div className="sb-head">
+            <div className="sb-logo-icon">🎓</div>
+            <span className="logo-txt">AkademiAI</span>
           </div>
+
+          <div className="sb-user">
+            <div className="sb-user-row">
+              <div className="sb-avatar">
+                {STUDENT_NAME.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}
+              </div>
+              <div className="sb-user-info">
+                <div className="sb-name">{STUDENT_NAME}</div>
+                {STUDENT_NIM && <div className="sb-nim">NIM {STUDENT_NIM}</div>}
+              </div>
+            </div>
+          </div>
+
           <div className="sb-nav">
+            <div className="sb-section-label">Menu</div>
             {tabs.map(t => (
               <button key={t.id} className={cx("sb-item", tab === t.id && "active")} onClick={() => { setTab(t.id); setNav(false); }}>
-                <span className="sb-icon">{t.icon}</span><span>{t.label}</span>
-                {t.badge && <span className="sb-badge">{t.badge}</span>}
+                <span className="sb-icon">{t.icon}</span>
+                <span>{t.label}</span>
+                {t.badge ? <span className="sb-badge">{t.badge}</span> : null}
               </button>
             ))}
           </div>
+
           <div className="sb-sync">
-            <button className="sync-btn" onClick={syncAll} disabled={syncing}>
-              {syncing ? "⟳ Syncing..." : "🔄 Sync Elearning"}
+            {/* Tombol refresh manual — auto-sync tetap jalan di background */}
+            <button className="sync-btn" onClick={() => syncAll()} disabled={syncing}>
+              {syncing ? "⟳ Memperbarui..." : "🔄 Refresh"}
             </button>
-            {syncProgress && <div className="sync-time">{syncProgress}</div>}
-            {lastSync && !syncing && <div className="sync-time">✅ Terakhir: {lastSync.toLocaleTimeString("id-ID")}</div>}
-            {errors.length > 0 && <div className="sync-time" style={{ color: "#f59e0b" }}>⚠️ {errors.length} endpoint gagal</div>}
+            {syncing && syncProgress && <div className="sync-time">{syncProgress}</div>}
+            {lastSync && !syncing && (
+              <div className="sync-time">
+                {syncAge === 0 ? "Baru saja diperbarui" : `Diperbarui ${syncAge} menit lalu`}
+              </div>
+            )}
+            {errors.length > 0 && <div className="sync-time" style={{ color: "var(--warning)" }}>⚠ {errors.length} data gagal dimuat</div>}
+            <div className="auto-attend-bar">
+              <span className="auto-attend-dot" />
+              <span>Auto-sync & absen aktif</span>
+            </div>
+            {autoAttendLog.length > 0 && (
+              <div className="sync-time" style={{ color: "var(--green-l)" }}>
+                ✓ {autoAttendLog[0].name?.slice(0, 22)}
+              </div>
+            )}
+            <button className="logout-btn" onClick={handleLogout}>Keluar</button>
           </div>
         </nav>
         {nav && <div className="overlay" onClick={() => setNav(false)} />}
 
+        {/* Toast */}
+        <div className="toast-stack">
+          {toasts.map(t => (
+            <div key={t.id} className={`toast toast-${t.type}`}>
+              <div className="toast-content">
+                <span className="toast-title">{t.title}</span>
+                <span className="toast-body">{t.body}</span>
+              </div>
+              <button className="toast-close" onClick={() => setToasts(p => p.filter(x => x.id !== t.id))}>✕</button>
+            </div>
+          ))}
+        </div>
+
         {/* Main content */}
         <main className="main-content">
+          {/* Loading screen hanya jika belum ada data sama sekali (tidak ada cache) */}
           {syncing && !lastSync && (
             <div className="loading-screen">
               <div className="spinner" />
@@ -248,9 +388,15 @@ export default function AkademiAI() {
 
           {(lastSync || !syncing) && (
             <>
+              {/* Refresh indicator — tidak blocking */}
+              {syncing && lastSync && (
+                <div className="refresh-bar">
+                  <span className="refresh-dot" /> Memperbarui data...
+                </div>
+              )}
               {errors.length > 0 && (
                 <div className="warn-bar">
-                  ⚠️ Beberapa data gagal dimuat ({errors.join(", ")}). <button onClick={syncAll}>Coba lagi</button>
+                  ⚠️ Beberapa data gagal dimuat ({errors.join(", ")}). <button onClick={() => syncAll()}>Coba lagi</button>
                 </div>
               )}
               {tab === "home"          && <HomeTab courses={courses} deadlines={deadlines} urgent={urgentDl} overdue={overdueDl} assignments={assignments} quizzes={quizzes} notifications={notifications} announcements={announcements} unread={unread} attRate={attRate} grades={grades} />}
@@ -258,10 +404,10 @@ export default function AkademiAI() {
               {tab === "tasks"         && <TasksTab assignments={assignments} />}
               {tab === "quizzes"       && <QuizzesTab quizzes={quizzes} />}
               {tab === "grades"        && <GradesTab grades={grades} />}
-              {tab === "attendance"    && <AttendanceTab courses={courses} attendance={attendance} setAttendance={setAttendance} />}
+              {tab === "attendance"    && <AttendanceTab courses={courses} attendance={attendance} setAttendance={setAttendance} autoAttendLog={autoAttendLog} lastAttendCheck={lastAttendCheck} />}
               {tab === "announcements" && <AnnouncementsTab announcements={announcements} />}
               {tab === "notif"         && <NotifTab notifications={notifications} />}
-              {tab === "chat"          && <ChatTab msgs={chatMsgs} input={chatIn} setInput={setChatIn} send={sendChat} loading={chatLoading} endRef={chatEnd} />}
+              {tab === "chat"          && <ChatTab msgs={chatMsgs} setMsgs={setChatMsgs} deadlines={deadlines} assignments={assignments} grades={grades} courses={courses} />}
             </>
           )}
         </main>

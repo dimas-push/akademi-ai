@@ -1,12 +1,21 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { fmtFull, daysUntil, cx } from "../../lib/helpers";
 
 export default function DeadlinesTab({ deadlines }) {
   const [filter, setFilter] = useState("all");
-  let items = [...deadlines];
-  if (filter === "overdue") items = items.filter(d => d.overdue || daysUntil(d.date) < 0);
-  if (filter === "week")    items = items.filter(d => daysUntil(d.date) >= 0 && daysUntil(d.date) <= 7);
-  if (filter === "month")   items = items.filter(d => daysUntil(d.date) >= 0 && daysUntil(d.date) <= 30);
+  const [search, setSearch] = useState("");
+
+  const items = useMemo(() => {
+    let list = [...deadlines];
+    if (filter === "overdue") list = list.filter(d => d.overdue || daysUntil(d.date) < 0);
+    if (filter === "week")    list = list.filter(d => daysUntil(d.date) >= 0 && daysUntil(d.date) <= 7);
+    if (filter === "month")   list = list.filter(d => daysUntil(d.date) >= 0 && daysUntil(d.date) <= 30);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(d => d.name?.toLowerCase().includes(q) || d.course?.toLowerCase().includes(q));
+    }
+    return list;
+  }, [deadlines, filter, search]);
 
   return (
     <div className="view">
@@ -14,6 +23,15 @@ export default function DeadlinesTab({ deadlines }) {
         <h1 className="view-title">Semua Deadline ⏰</h1>
         <p className="view-sub">{deadlines.length} deadline dari elearning</p>
       </div>
+
+      <input
+        className="search-input"
+        type="search"
+        placeholder="Cari deadline atau mata kuliah..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+
       <div className="filters">
         {[["all", "Semua"], ["overdue", "Terlambat"], ["week", "7 Hari"], ["month", "30 Hari"]].map(([k, l]) => (
           <button key={k} className={cx("fbtn", filter === k && "active")} onClick={() => setFilter(k)}>{l}</button>
@@ -39,7 +57,9 @@ export default function DeadlinesTab({ deadlines }) {
             </div>
           </a>
         ))}
-        {items.length === 0 && <p className="empty">Tidak ada deadline di filter ini</p>}
+        {items.length === 0 && (
+          <p className="empty">{search ? `Tidak ada deadline cocok "${search}"` : "Tidak ada deadline di filter ini"}</p>
+        )}
       </div>
     </div>
   );
