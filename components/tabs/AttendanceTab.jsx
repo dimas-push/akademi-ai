@@ -97,19 +97,18 @@ function MoodleAttendanceCard() {
   );
 }
 
-// ─── Telegram setup card ──────────────────────────────────────
+// ─── WhatsApp (Fonnte) setup card ────────────────────────────
 
-function TelegramCard() {
-  const [status,   setStatus]   = useState(null); // null=loading, {configured}
-  const [testing,  setTesting]  = useState(false);
-  const [testMsg,  setTestMsg]  = useState(null);
-  const [token,    setToken]    = useState('');
-  const [chatId,   setChatId]   = useState('');
-  const [saved,    setSaved]    = useState(false);
+function WhatsAppCard() {
+  const [status,  setStatus]  = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState(null);
+  const [token,   setToken]   = useState('');
+  const [target,  setTarget]  = useState('');
+  const [saved,   setSaved]   = useState(false);
 
   useEffect(() => {
-    // Cek apakah env vars sudah dikonfigurasi
-    fetch('/api/notify/telegram', {
+    fetch('/api/notify/whatsapp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -118,19 +117,18 @@ function TelegramCard() {
       .then(d => setStatus(d))
       .catch(() => setStatus({ configured: false }));
 
-    // Load dari localStorage (jika user sudah input manual)
     try {
-      const t = localStorage.getItem('tg-token');
-      const c = localStorage.getItem('tg-chatid');
+      const t = localStorage.getItem('wa-token');
+      const n = localStorage.getItem('wa-target');
       if (t) setToken(t);
-      if (c) setChatId(c);
+      if (n) setTarget(n);
     } catch {}
   }, []);
 
   const saveLocal = () => {
     try {
-      localStorage.setItem('tg-token',  token);
-      localStorage.setItem('tg-chatid', chatId);
+      localStorage.setItem('wa-token',  token);
+      localStorage.setItem('wa-target', target);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {}
@@ -140,21 +138,20 @@ function TelegramCard() {
     setTesting(true);
     setTestMsg(null);
     try {
-      const body = { message: '🎓 <b>AkademiAI</b> — Test notifikasi berhasil! Auto-absen aktif.' };
-      // Tambahkan kredensial dari localStorage jika env vars tidak terkonfigurasi
+      const body = { message: '🎓 *AkademiAI* — Test notifikasi berhasil! Auto-absen aktif.' };
       if (!status?.configured) {
-        const t = localStorage.getItem('tg-token');
-        const c = localStorage.getItem('tg-chatid');
+        const t = localStorage.getItem('wa-token');
+        const n = localStorage.getItem('wa-target');
         if (t) body.token  = t;
-        if (c) body.chatId = c;
+        if (n) body.target = n;
       }
-      const res  = await fetch('/api/notify/telegram', {
+      const res  = await fetch('/api/notify/whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      setTestMsg(data.ok ? '✅ Pesan terkirim!' : `❌ ${data.error}`);
+      setTestMsg(data.ok ? '✅ Pesan WhatsApp terkirim!' : `❌ ${data.error}`);
     } catch (e) {
       setTestMsg(`❌ ${e.message}`);
     } finally {
@@ -162,16 +159,12 @@ function TelegramCard() {
     }
   };
 
-  const configured = status?.configured || (token && chatId);
-
   return (
     <div className="card tg-card">
       <div className="tg-header">
         <div>
-          <h3 className="card-title" style={{ margin: 0 }}>
-            📱 Notifikasi Telegram
-          </h3>
-          <p className="tg-sub">Dapat notif WhatsApp/Telegram saat berhasil absen</p>
+          <h3 className="card-title" style={{ margin: 0 }}>💬 Notifikasi WhatsApp</h3>
+          <p className="tg-sub">Dapat WA otomatis saat berhasil absen</p>
         </div>
         <span className={cx("tg-badge", status?.configured ? "tg-badge-ok" : "tg-badge-off")}>
           {status === null ? '…' : status.configured ? '🟢 Aktif' : '⚫ Belum diatur'}
@@ -179,64 +172,62 @@ function TelegramCard() {
       </div>
 
       {status?.configured ? (
-        // Sudah dikonfigurasi via env vars
         <div className="tg-configured">
           <p className="tg-ok-note">
-            Bot Telegram sudah terhubung via environment variables. Notifikasi akan dikirim otomatis setiap kali absen berhasil.
+            WhatsApp sudah terhubung via Fonnte. Notifikasi akan dikirim otomatis setiap kali absen berhasil.
           </p>
           <button className="tg-test-btn" onClick={sendTest} disabled={testing}>
-            {testing ? 'Mengirim…' : '📤 Kirim Pesan Test'}
+            {testing ? 'Mengirim…' : '📤 Kirim WA Test'}
           </button>
           {testMsg && <p className="tg-test-result">{testMsg}</p>}
         </div>
       ) : (
-        // Belum dikonfigurasi — tampilkan panduan setup
         <div className="tg-setup">
           <div className="tg-steps">
             <div className="tg-step">
               <span className="tg-step-num">1</span>
               <div>
-                <strong>Buat bot Telegram</strong>
-                <span className="tg-step-sub">Buka @BotFather di Telegram → /newbot → ikuti langkahnya → salin <code>token</code></span>
+                <strong>Daftar di Fonnte</strong>
+                <span className="tg-step-sub">Buka <code>fonnte.com</code> → daftar → hubungkan nomor WA kamu → salin <code>token</code> dari dashboard</span>
               </div>
             </div>
             <div className="tg-step">
               <span className="tg-step-num">2</span>
               <div>
-                <strong>Dapatkan Chat ID kamu</strong>
-                <span className="tg-step-sub">Kirim pesan ke bot tersebut, lalu buka:<br /><code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code><br />Salin nilai <code>message.chat.id</code></span>
+                <strong>Tambahkan ke Vercel</strong>
+                <span className="tg-step-sub">Settings → Environment Variables → tambahkan:<br /><code>FONNTE_TOKEN</code> = token dari Fonnte<br /><code>WA_TARGET</code> = nomormu, misal <code>6281234567890</code></span>
               </div>
             </div>
             <div className="tg-step">
               <span className="tg-step-num">3</span>
               <div>
-                <strong>Tambahkan ke Vercel</strong>
-                <span className="tg-step-sub">Settings → Environment Variables → tambahkan:<br /><code>TELEGRAM_BOT_TOKEN</code> dan <code>TELEGRAM_CHAT_ID</code></span>
+                <strong>Redeploy & selesai</strong>
+                <span className="tg-step-sub">Setelah env var disimpan, push ke GitHub atau trigger redeploy Vercel</span>
               </div>
             </div>
           </div>
 
-          <div className="tg-divider">atau coba dulu dengan input di bawah:</div>
+          <div className="tg-divider">atau coba dulu dengan input di bawah</div>
 
           <div className="tg-inputs">
             <input
               className="tg-input"
-              placeholder="Bot Token (1234567890:ABC...)"
+              placeholder="Fonnte Token"
               value={token}
               onChange={e => setToken(e.target.value)}
             />
             <input
               className="tg-input"
-              placeholder="Chat ID (misal: 123456789)"
-              value={chatId}
-              onChange={e => setChatId(e.target.value)}
+              placeholder="Nomor WA tujuan (6281234567890)"
+              value={target}
+              onChange={e => setTarget(e.target.value)}
             />
             <div className="tg-input-btns">
-              <button className="tg-save-btn" onClick={saveLocal} disabled={!token || !chatId}>
+              <button className="tg-save-btn" onClick={saveLocal} disabled={!token || !target}>
                 {saved ? '✓ Tersimpan' : 'Simpan Lokal'}
               </button>
-              <button className="tg-test-btn" onClick={sendTest} disabled={testing || (!token || !chatId)}>
-                {testing ? 'Mengirim…' : '📤 Test Kirim'}
+              <button className="tg-test-btn" onClick={sendTest} disabled={testing || (!token && !status?.configured) || (!target && !status?.configured)}>
+                {testing ? 'Mengirim…' : '📤 Test Kirim WA'}
               </button>
             </div>
           </div>
@@ -426,8 +417,8 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
       {/* ── Data kehadiran resmi Moodle ───────────────────────── */}
       <MoodleAttendanceCard />
 
-      {/* ── Telegram notification setup ──────────────────────── */}
-      <TelegramCard />
+      {/* ── WhatsApp notification setup ──────────────────────── */}
+      <WhatsAppCard />
 
       {/* ── Input manual ───────────────────────────────────── */}
       {courses.length > 0 && (
