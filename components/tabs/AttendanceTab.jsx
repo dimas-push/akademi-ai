@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { uid, cx } from "../../lib/helpers";
 
-export default function AttendanceTab({ courses, attendance, setAttendance, autoAttendLog, lastAttendCheck }) {
+const INTERVAL_OPTIONS = [1, 2, 5, 10, 15, 30];
+
+export default function AttendanceTab({ courses, attendance, setAttendance, autoAttendLog, lastAttendCheck, attendInterval, setAttendInterval }) {
   const [testing, setTesting]   = useState(false);
   const [testResult, setResult] = useState(null);
   const [now, setNow]           = useState(new Date());
@@ -18,7 +20,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
 
   // Hitung detik sejak terakhir check & detik sampai check berikutnya
   const secSinceLast = lastAttendCheck ? Math.floor((now - lastAttendCheck) / 1000) : null;
-  const secUntilNext = lastAttendCheck ? Math.max(0, 60 - secSinceLast) : null;
+  const secUntilNext = lastAttendCheck ? Math.max(0, (attendInterval * 60) - secSinceLast) : null;
 
   const fmtCountdown = (sec) => {
     if (sec == null) return "—";
@@ -57,7 +59,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
     <div className="view">
       <div className="view-hdr">
         <h1 className="view-title">Absensi ✅</h1>
-        <p className="view-sub">Auto-absen dicek tiap 1 menit saat jam kuliah</p>
+        <p className="view-sub">Auto-absen dicek tiap {attendInterval} menit saat jam kuliah</p>
       </div>
 
       {/* ── Status auto-absen ─────────────────────────────────── */}
@@ -71,7 +73,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
               </div>
               <div className="att-auto-sub">
                 {isClassHour
-                  ? "Absensi otomatis dicek tiap 1 menit"
+                  ? `Absensi otomatis dicek tiap ${attendInterval} menit`
                   : "Akan aktif kembali Sen–Sab pukul 06:00"}
               </div>
             </div>
@@ -84,6 +86,22 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
           >
             {testing ? "⟳" : "▶"}
           </button>
+        </div>
+
+        {/* Pengaturan interval */}
+        <div className="att-interval-row">
+          <span className="att-interval-label">Interval cek:</span>
+          <div className="att-interval-btns">
+            {INTERVAL_OPTIONS.map(m => (
+              <button
+                key={m}
+                className={`att-interval-btn${attendInterval === m ? " active" : ""}`}
+                onClick={() => setAttendInterval(m)}
+              >
+                {m}m
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Countdown panel */}
@@ -223,6 +241,15 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
         @keyframes pulse { 0%,100% { box-shadow: 0 0 0 4px rgba(16,185,129,.2); } 50% { box-shadow: 0 0 0 8px rgba(16,185,129,.05); } }
         .att-auto-label { font-size: 14px; font-weight: 600; color: var(--t1); }
         .att-auto-sub   { font-size: 11px; color: var(--t3); margin-top: 2px; }
+        .att-interval-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+        .att-interval-label { font-size: 12px; color: var(--t3); white-space: nowrap; }
+        .att-interval-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+        .att-interval-btn {
+          padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 500;
+          border: 1px solid var(--bd); background: var(--bg3); color: var(--t2); cursor: pointer;
+        }
+        .att-interval-btn:hover { border-color: var(--accent); color: var(--t1); }
+        .att-interval-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
         .att-manual-btn {
           width: 32px; height: 32px; border-radius: 8px;
           border: 1px solid var(--bd); background: var(--bg3);

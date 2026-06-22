@@ -42,6 +42,7 @@ export default function AkademiAI() {
   const [toasts, setToasts]               = useState([]);
   const [autoAttendLog, setAutoAttendLog]     = useState([]);
   const [lastAttendCheck, setLastAttendCheck] = useState(null);
+  const [attendInterval, setAttendInterval]   = useState(1); // menit
   const [chatMsgs, setChatMsgs]           = useState([]);
 
   const syncingRef = useRef(false); // guard: jangan dobel-sync
@@ -57,6 +58,7 @@ export default function AkademiAI() {
     setMounted(true);
     try { const s = localStorage.getItem("akademi-att");  if (s) setAttendance(JSON.parse(s)); } catch {}
     try { const c = localStorage.getItem("akademi-chat"); if (c) setChatMsgs(JSON.parse(c));   } catch {}
+    try { const n = localStorage.getItem("akademi-attend-interval"); if (n) setAttendInterval(Number(n)); } catch {}
 
     loadState().then(cached => {
       if (!cached) return;
@@ -77,6 +79,7 @@ export default function AkademiAI() {
   // ─── PERSIST ──────────────────────────────────────────────────
   useEffect(() => { if (mounted) try { localStorage.setItem("akademi-att",  JSON.stringify(attendance)); } catch {} }, [attendance, mounted]);
   useEffect(() => { if (mounted) try { localStorage.setItem("akademi-chat", JSON.stringify(chatMsgs.slice(-50))); } catch {} }, [chatMsgs, mounted]);
+  useEffect(() => { if (mounted) try { localStorage.setItem("akademi-attend-interval", String(attendInterval)); } catch {} }, [attendInterval, mounted]);
 
   // ─── AUTO-ABSEN POLLING ───────────────────────────────────────
   useEffect(() => {
@@ -102,7 +105,7 @@ export default function AkademiAI() {
     };
 
     runAttend();
-    const interval = setInterval(runAttend, 1 * 60 * 1000);
+    const interval = setInterval(runAttend, attendInterval * 60 * 1000);
 
     const onSWMsg = (event) => {
       if (event.data?.type === "AUTO_ATTENDED") {
@@ -117,7 +120,7 @@ export default function AkademiAI() {
       clearInterval(interval);
       if ("serviceWorker" in navigator) navigator.serviceWorker.removeEventListener("message", onSWMsg);
     };
-  }, [mounted, addToast]);
+  }, [mounted, addToast, attendInterval]);
 
   // ─── SYNC ────────────────────────────────────────────────────
   const syncAll = useCallback(async (silent = false) => {
@@ -404,7 +407,7 @@ export default function AkademiAI() {
               {tab === "tasks"         && <TasksTab assignments={assignments} />}
               {tab === "quizzes"       && <QuizzesTab quizzes={quizzes} />}
               {tab === "grades"        && <GradesTab grades={grades} />}
-              {tab === "attendance"    && <AttendanceTab courses={courses} attendance={attendance} setAttendance={setAttendance} autoAttendLog={autoAttendLog} lastAttendCheck={lastAttendCheck} />}
+              {tab === "attendance"    && <AttendanceTab courses={courses} attendance={attendance} setAttendance={setAttendance} autoAttendLog={autoAttendLog} lastAttendCheck={lastAttendCheck} attendInterval={attendInterval} setAttendInterval={setAttendInterval} />}
               {tab === "announcements" && <AnnouncementsTab announcements={announcements} />}
               {tab === "notif"         && <NotifTab notifications={notifications} />}
               {tab === "chat"          && <ChatTab msgs={chatMsgs} setMsgs={setChatMsgs} deadlines={deadlines} assignments={assignments} grades={grades} courses={courses} />}
