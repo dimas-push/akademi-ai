@@ -1,13 +1,53 @@
+import { useState, useEffect } from "react";
 import { fmtDate, fmtFull, daysUntil, cx, STUDENT_NAME, DAYS_SHORT } from "../../lib/helpers";
 
+function useNow() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  return now;
+}
+
+function Countdown({ deadline }) {
+  const now    = useNow();
+  const secLeft = Math.max(0, Math.floor((new Date(deadline.date) - now) / 1000));
+  const h = Math.floor(secLeft / 3600);
+  const m = Math.floor((secLeft % 3600) / 60);
+  const s = secLeft % 60;
+  const pad = n => String(n).padStart(2, '0');
+  const urgent = secLeft < 3600;
+
+  return (
+    <div className="countdown-card">
+      <div className="countdown-label">⏱ Deadline terdekat</div>
+      <div className="countdown-name">{deadline.name}</div>
+      <div className="countdown-course">{deadline.course}</div>
+      <div className={cx("countdown-timer", urgent && "countdown-urgent")}>
+        <span className="ct-block"><span className="ct-val">{pad(h)}</span><span className="ct-lbl">jam</span></span>
+        <span className="ct-sep">:</span>
+        <span className="ct-block"><span className="ct-val">{pad(m)}</span><span className="ct-lbl">menit</span></span>
+        <span className="ct-sep">:</span>
+        <span className="ct-block"><span className="ct-val">{pad(s)}</span><span className="ct-lbl">detik</span></span>
+      </div>
+    </div>
+  );
+}
+
 export default function HomeTab({ courses, deadlines, urgent, overdue, assignments, quizzes, notifications, announcements, unread, attRate, grades }) {
-  const today = new Date();
+  const today    = new Date();
   const startDow = today.getDay();
-  const heatmap = Array.from({ length: 28 }, (_, i) => {
-    const d = new Date(today); d.setDate(d.getDate() + i);
+  const heatmap  = Array.from({ length: 28 }, (_, i) => {
+    const d  = new Date(today); d.setDate(d.getDate() + i);
     const ds = d.toISOString().split("T")[0];
     const count = deadlines.filter(dl => dl.date && new Date(dl.date).toISOString().split("T")[0] === ds).length;
     return { date: ds, count, label: d.getDate() };
+  });
+
+  // Deadline dalam 24 jam untuk countdown
+  const now = new Date();
+  const within24h = deadlines.find(d => {
+    if (!d.date) return false;
+    const diff = new Date(d.date) - now;
+    return diff > 0 && diff < 24 * 3600 * 1000;
   });
 
   return (
@@ -24,6 +64,9 @@ export default function HomeTab({ courses, deadlines, urgent, overdue, assignmen
           {urgent.length > 0 && <strong style={{ color: "#f59e0b" }}>{urgent.length} deadline ≤3 hari</strong>}
         </div>
       )}
+
+      {/* Countdown jika ada deadline dalam 24 jam */}
+      {within24h && <Countdown deadline={within24h} />}
 
       <div className="stats-grid">
         {[

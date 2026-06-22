@@ -10,9 +10,27 @@
 //  - Auto-absen di jam kuliah
 // ═══════════════════════════════════════════════════════════════
 
-const DB_NAME = 'akademi-ai-sw';
-const DB_VER  = 1;
-const ICON    = '/icon.svg';
+const DB_NAME    = 'akademi-ai-sw';
+const DB_VER     = 1;
+const ICON       = '/icon.svg';
+const CACHE_NAME = 'akademi-shell-v1';
+const SHELL      = ['/', '/manifest.json', '/icon.svg'];
+
+// ─── Install & Activate: cache shell ─────────────────────────
+
+self.addEventListener('install',  e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(SHELL)).catch(() => {})); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))); });
+
+// ─── Fetch: offline fallback untuk navigasi ──────────────────
+
+self.addEventListener('fetch', event => {
+  if (event.request.mode !== 'navigate') return;
+  event.respondWith(
+    fetch(event.request).catch(() =>
+      caches.match('/').then(r => r || new Response('<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#07101f;color:#e8f0f8"><h2>📡 Offline</h2><p>Buka AkademiAI saat ada koneksi internet.</p></body></html>', { headers: { 'Content-Type': 'text/html' } }))
+    )
+  );
+});
 
 // ─── IndexedDB helpers ────────────────────────────────────────
 

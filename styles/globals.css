@@ -674,9 +674,112 @@ button { font-family: inherit; }
 .chat-clear-btn:hover { border-color: var(--danger); color: var(--danger); }
 
 /* ══════════════════════════════════════════════════════════════
+   Countdown Widget
+══════════════════════════════════════════════════════════════ */
+.countdown-card {
+  background: linear-gradient(135deg, rgba(239,68,68,.08), rgba(239,68,68,.03));
+  border: 1px solid rgba(239,68,68,.25); border-radius: 14px;
+  padding: 16px 20px; margin-bottom: 16px;
+}
+.countdown-label  { font-size: 11px; font-weight: 600; color: #f87171; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+.countdown-name   { font-size: 14px; font-weight: 600; color: var(--t1); margin-bottom: 2px; }
+.countdown-course { font-size: 12px; color: var(--t3); margin-bottom: 12px; }
+.countdown-timer  { display: flex; align-items: center; gap: 6px; }
+.countdown-urgent .ct-val { color: #ef4444; animation: urgentPulse 1s ease-in-out infinite; }
+.ct-block  { display: flex; flex-direction: column; align-items: center; min-width: 44px; background: var(--bg3); border-radius: 8px; padding: 6px 8px; }
+.ct-val    { font-size: 22px; font-weight: 800; color: var(--t1); font-variant-numeric: tabular-nums; line-height: 1; }
+.ct-lbl    { font-size: 9px; color: var(--t3); text-transform: uppercase; margin-top: 2px; }
+.ct-sep    { font-size: 20px; font-weight: 700; color: var(--t3); align-self: flex-start; padding-top: 6px; }
+
+/* ══════════════════════════════════════════════════════════════
+   Push Notification Banner
+══════════════════════════════════════════════════════════════ */
+.notif-banner {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2);
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 16px;
+}
+.notif-banner-text { flex: 1; font-size: 13px; color: var(--t2); }
+.notif-banner-text strong { color: var(--t1); }
+.notif-allow-btn {
+  background: var(--green); border: none; border-radius: 8px; color: #fff;
+  font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 14px; cursor: pointer;
+  white-space: nowrap; transition: background var(--ease);
+}
+.notif-allow-btn:hover { background: var(--green-d); }
+.notif-dismiss-btn {
+  background: none; border: none; color: var(--t3); cursor: pointer;
+  font-size: 16px; padding: 4px; line-height: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Deadline Calendar
+══════════════════════════════════════════════════════════════ */
+.view-toggle { display: flex; gap: 4px; }
+.vtbtn {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--bd);
+  background: var(--bg3); color: var(--t2); font-family: inherit; font-size: 12px; cursor: pointer;
+  transition: all var(--ease);
+}
+.vtbtn.active { background: var(--green); border-color: var(--green); color: #fff; }
+.vtbtn:hover:not(.active) { border-color: var(--green); color: var(--t1); }
+
+.cal-wrap { background: var(--bg2); border: 1px solid var(--bd); border-radius: 14px; overflow: hidden; }
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--bd);
+}
+.cal-month-label { font-size: 15px; font-weight: 700; color: var(--t1); }
+.cal-nav {
+  background: var(--bg3); border: 1px solid var(--bd); border-radius: 8px;
+  color: var(--t2); cursor: pointer; font-size: 18px; width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center; transition: all var(--ease);
+}
+.cal-nav:hover { border-color: var(--green); color: var(--green); }
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  padding: 12px; gap: 4px;
+}
+.cal-day-label { font-size: 10px; font-weight: 600; color: var(--t3); text-align: center; padding: 4px 0; text-transform: uppercase; }
+.cal-cell {
+  aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px; cursor: default;
+  transition: background var(--ease); position: relative;
+}
+.cal-has-dl { cursor: pointer; }
+.cal-has-dl:hover { background: var(--bg3); }
+.cal-today { background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.3); }
+.cal-selected { background: var(--bg4); border: 1px solid var(--green); }
+.cal-pad { cursor: default; }
+.cal-day-num { font-size: 13px; font-weight: 500; color: var(--t2); }
+.cal-today .cal-day-num  { color: var(--green); font-weight: 700; }
+.cal-selected .cal-day-num { color: var(--t1); }
+.cal-dot {
+  width: 16px; height: 5px; border-radius: 99px; font-size: 8px; font-weight: 700;
+  color: #fff; display: flex; align-items: center; justify-content: center;
+}
+.cal-dot-ok     { background: #10b981; }
+.cal-dot-urgent { background: #f59e0b; }
+.cal-dot-late   { background: #ef4444; }
+.cal-detail { border-top: 1px solid var(--bd); padding: 16px 18px; }
+.cal-detail-title { font-size: 13px; font-weight: 700; color: var(--t1); margin-bottom: 10px; }
+.cal-detail-empty { font-size: 12px; color: var(--t3); }
+.cal-detail-item {
+  display: flex; align-items: flex-start; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid var(--bd); text-decoration: none;
+  transition: opacity var(--ease);
+}
+.cal-detail-item:last-child { border-bottom: none; }
+.cal-detail-item:hover { opacity: .8; }
+.cal-detail-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.cal-detail-name   { font-size: 13px; color: var(--t1); font-weight: 500; }
+.cal-detail-course { font-size: 11px; color: var(--t3); margin-top: 2px; }
+
+/* ══════════════════════════════════════════════════════════════
    Keyframes
 ══════════════════════════════════════════════════════════════ */
-@keyframes spin    { to { transform: rotate(360deg); } }
-@keyframes pulse   { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.55; transform:scale(1.4); } }
-@keyframes toastIn { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
-@keyframes blink   { 0%,100% { opacity:1; } 50% { opacity:0; } }
+@keyframes spin         { to { transform: rotate(360deg); } }
+@keyframes pulse        { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.55; transform:scale(1.4); } }
+@keyframes toastIn      { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:translateY(0) scale(1); } }
+@keyframes blink        { 0%,100% { opacity:1; } 50% { opacity:0; } }
+@keyframes urgentPulse  { 0%,100% { opacity:1; } 50% { opacity:.5; } }

@@ -43,6 +43,8 @@ export default function AkademiAI() {
   const [autoAttendLog, setAutoAttendLog]     = useState([]);
   const [lastAttendCheck, setLastAttendCheck] = useState(null);
   const [attendInterval, setAttendInterval]   = useState(1); // menit
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
+  const [tokenExpired, setTokenExpired]       = useState(false);
   const [chatMsgs, setChatMsgs]           = useState([]);
 
   const syncingRef = useRef(false); // guard: jangan dobel-sync
@@ -59,6 +61,11 @@ export default function AkademiAI() {
     try { const s = localStorage.getItem("akademi-att");  if (s) setAttendance(JSON.parse(s)); } catch {}
     try { const c = localStorage.getItem("akademi-chat"); if (c) setChatMsgs(JSON.parse(c));   } catch {}
     try { const n = localStorage.getItem("akademi-attend-interval"); if (n) setAttendInterval(Number(n)); } catch {}
+
+    // Minta izin notifikasi setelah 4 detik jika belum pernah
+    setTimeout(() => {
+      if ('Notification' in window && Notification.permission === 'default') setShowNotifBanner(true);
+    }, 4000);
 
     loadState().then(cached => {
       if (!cached) return;
@@ -142,6 +149,10 @@ export default function AkademiAI() {
     ]);
 
     let localCourses = [];
+    // Deteksi token Moodle expired (exception dari API)
+    if (crsData?.exception || crsData?.errorcode === 'invalidtoken') { setTokenExpired(true); syncingRef.current = false; setSyncing(false); return; }
+    setTokenExpired(false);
+
     if (crsData?.courses) { localCourses = crsData.courses; setCourses(localCourses); }
     else errs.push("courses");
 
@@ -379,6 +390,23 @@ export default function AkademiAI() {
           ))}
         </div>
 
+        {/* Push notification banner */}
+        {showNotifBanner && (
+          <div className="notif-banner" style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 200, width: "calc(100% - 32px)", maxWidth: 480 }}>
+            <span style={{ fontSize: 20 }}>🔔</span>
+            <span className="notif-banner-text"><strong>Aktifkan notifikasi</strong> untuk dapat peringatan deadline & absensi otomatis</span>
+            <button className="notif-allow-btn" onClick={async () => {
+              const p = await Notification.requestPermission();
+              setShowNotifBanner(false);
+              if (p === 'granted' && 'serviceWorker' in navigator) {
+                const reg = await navigator.serviceWorker.ready;
+                reg.pushManager?.subscribe?.({ userVisibleOnly: true }).catch(() => {});
+              }
+            }}>Izinkan</button>
+            <button className="notif-dismiss-btn" onClick={() => setShowNotifBanner(false)}>✕</button>
+          </div>
+        )}
+
         {/* Main content */}
         <main className="main-content">
           {/* Loading screen hanya jika belum ada data sama sekali (tidak ada cache) */}
@@ -397,7 +425,12 @@ export default function AkademiAI() {
                   <span className="refresh-dot" /> Memperbarui data...
                 </div>
               )}
-              {errors.length > 0 && (
+              {tokenExpired && (
+                <div className="warn-bar" style={{ borderColor: "#ef4444", background: "rgba(239,68,68,.06)" }}>
+                  🔑 Token Moodle expired atau tidak valid. <a href="https://elearning.ubpkarawang.ac.id" target="_blank" rel="noopener" style={{ color: "#f87171" }}>Login ulang ke elearning</a> lalu perbarui MOODLE_TOKEN di Vercel.
+                </div>
+              )}
+              {errors.length > 0 && !tokenExpired && (
                 <div className="warn-bar">
                   ⚠️ Beberapa data gagal dimuat ({errors.join(", ")}). <button onClick={() => syncAll()}>Coba lagi</button>
                 </div>
