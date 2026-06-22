@@ -18,7 +18,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
 
   // Hitung detik sejak terakhir check & detik sampai check berikutnya
   const secSinceLast = lastAttendCheck ? Math.floor((now - lastAttendCheck) / 1000) : null;
-  const secUntilNext = lastAttendCheck ? Math.max(0, 900 - secSinceLast) : null;
+  const secUntilNext = lastAttendCheck ? Math.max(0, 60 - secSinceLast) : null;
 
   const fmtCountdown = (sec) => {
     if (sec == null) return "—";
@@ -57,7 +57,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
     <div className="view">
       <div className="view-hdr">
         <h1 className="view-title">Absensi ✅</h1>
-        <p className="view-sub">Auto-absen dicek tiap 15 menit saat jam kuliah</p>
+        <p className="view-sub">Auto-absen dicek tiap 1 menit saat jam kuliah</p>
       </div>
 
       {/* ── Status auto-absen ─────────────────────────────────── */}
@@ -71,7 +71,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
               </div>
               <div className="att-auto-sub">
                 {isClassHour
-                  ? "Absensi otomatis dicek tiap 15 menit"
+                  ? "Absensi otomatis dicek tiap 1 menit"
                   : "Akan aktif kembali Sen–Sab pukul 06:00"}
               </div>
             </div>

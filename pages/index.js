@@ -102,7 +102,7 @@ export default function AkademiAI() {
     };
 
     runAttend();
-    const interval = setInterval(runAttend, 15 * 60 * 1000);
+    const interval = setInterval(runAttend, 1 * 60 * 1000);
 
     const onSWMsg = (event) => {
       if (event.data?.type === "AUTO_ATTENDED") {
