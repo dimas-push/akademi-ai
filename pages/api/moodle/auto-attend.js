@@ -26,6 +26,8 @@ const BROWSER = {
   'Accept-Encoding': 'gzip, deflate, br',
 };
 
+import { sendTelegram } from '../../../lib/telegram';
+
 // ─── Cookie helpers ───────────────────────────────────────────
 
 function parseCookies(res) {
@@ -338,6 +340,12 @@ export default async function handler(req, res) {
 
     const attended = results.filter(r => r.status === 'attended');
     const failed   = results.filter(r => ['failed', 'error', 'no_status'].includes(r.status));
+
+    // Kirim notifikasi Telegram jika ada yang berhasil absen
+    if (attended.length > 0) {
+      const lines = attended.map(a => `• ${a.name} — ${a.course}`).join('\n');
+      sendTelegram(`✅ <b>Auto-Absen Berhasil</b>\n\n${lines}`).catch(() => {});
+    }
 
     return res.status(200).json({
       checked:  results.length,
