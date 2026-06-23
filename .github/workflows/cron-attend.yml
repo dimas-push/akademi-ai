@@ -13,6 +13,15 @@ jobs:
     steps:
       - name: Panggil endpoint auto-absen
         run: |
-          curl -s -X POST "${{ secrets.SITE_URL }}/api/cron/auto-attend" \
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
+            "${{ secrets.SITE_URL }}/api/cron/auto-attend" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json" | jq .
+            -H "Content-Type: application/json")
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+          BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS:/d')
+          echo "Status: $HTTP_STATUS"
+          echo "Response: $BODY"
+          # Gagal hanya jika HTTP error (5xx), bukan jika skip/non-JSON
+          if [ "$HTTP_STATUS" -ge 500 ] 2>/dev/null; then
+            echo "Server error!" && exit 1
+          fi
