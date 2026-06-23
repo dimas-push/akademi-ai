@@ -92,7 +92,7 @@ export default function AkademiAI() {
   useEffect(() => {
     if (!mounted) return;
 
-    const isClassHour = () => { const h = new Date().getHours(), d = new Date().getDay(); return d >= 1 && d <= 6 && h >= 6 && h < 22; };
+    const isClassHour = () => { const h = new Date().getHours(), d = new Date().getDay(); return d >= 1 && d <= 5 && h >= 8; };
 
     const runAttend = async () => {
       if (!isClassHour()) return;

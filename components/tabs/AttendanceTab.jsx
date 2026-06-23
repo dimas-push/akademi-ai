@@ -252,7 +252,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
   }, []);
 
   const h = now.getHours(), d = now.getDay();
-  const isClassHour = d >= 1 && d <= 6 && h >= 6 && h < 22;
+  const isClassHour = d >= 1 && d <= 5 && h >= 8;
 
   const secSinceLast = lastAttendCheck ? Math.floor((now - lastAttendCheck) / 1000) : null;
   const secUntilNext = lastAttendCheck ? Math.max(0, (attendInterval * 60) - secSinceLast) : null;
@@ -301,7 +301,7 @@ export default function AttendanceTab({ courses, attendance, setAttendance, auto
               <div className="att-auto-sub">
                 {isClassHour
                   ? `Absensi otomatis dicek tiap ${attendInterval} menit`
-                  : "Akan aktif kembali Sen–Sab pukul 06:00"}
+                  : "Akan aktif kembali Sen–Jum pukul 08:00"}
               </div>
             </div>
           </div>

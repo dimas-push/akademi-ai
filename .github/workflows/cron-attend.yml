@@ -1,11 +1,11 @@
 name: Auto Absen (Cron)
 
-# Tiap 15 menit, Sen–Sab 06:00–22:00 WIB (UTC+7)
-# UTC equivalent: 23:00 hari sebelumnya – 15:00 hari itu
+# Sen–Jum 08:00–00:00 WIB (UTC+7)
+# UTC equivalent: Sen–Jum 01:00–17:00 UTC
+# (API handler tetap cek jam WIB sebagai safety net)
 on:
   schedule:
-    - cron: '*/15 23 * * 0-5'   # 23:xx UTC = 06:xx WIB (mulai)
-    - cron: '*/15 0-14 * * 1-6' # 00:xx–14:xx UTC = 07:xx–21:xx WIB
+    - cron: '*/15 1-16 * * 1-5'  # Mon-Fri 01:00-16:45 UTC = 08:00-23:45 WIB
 
 jobs:
   attend:
@@ -21,7 +21,7 @@ jobs:
           BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS:/d')
           echo "Status: $HTTP_STATUS"
           echo "Response: $BODY"
-          # Gagal hanya jika HTTP error (5xx), bukan jika skip/non-JSON
+          # Gagal hanya jika HTTP error (5xx)
           if [ "$HTTP_STATUS" -ge 500 ] 2>/dev/null; then
             echo "Server error!" && exit 1
           fi

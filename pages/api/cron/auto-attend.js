@@ -10,14 +10,14 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Cek jam kuliah WIB (UTC+7): Sen–Sab 06:00–22:00
+  // Cek jadwal WIB (UTC+7): Sen–Jum 08:00–00:00 (tengah malam)
   const now     = new Date();
   const wibMs   = now.getTime() + 7 * 60 * 60 * 1000;
   const wib     = new Date(wibMs);
-  const wibDay  = wib.getUTCDay();   // 0=Sun
+  const wibDay  = wib.getUTCDay();   // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
   const wibHour = wib.getUTCHours();
-  if (wibDay === 0 || wibHour < 6 || wibHour >= 22) {
-    return res.status(200).json({ skip: true, reason: 'Di luar jam kuliah' });
+  if (wibDay === 0 || wibDay === 6 || wibHour < 8) {
+    return res.status(200).json({ skip: true, reason: 'Di luar jadwal (Sen–Jum 08:00–00:00 WIB)' });
   }
 
   // Panggil endpoint auto-attend

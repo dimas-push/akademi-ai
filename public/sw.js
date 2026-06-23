@@ -67,7 +67,7 @@ function dbSet(db, key, val) {
 
 function isClassHour() {
   const now = new Date();
-  return now.getDay() >= 1 && now.getDay() <= 6 && now.getHours() >= 6 && now.getHours() < 22;
+  return now.getDay() >= 1 && now.getDay() <= 5 && now.getHours() >= 8;
 }
 
 function isAttendanceEvent(e) {
